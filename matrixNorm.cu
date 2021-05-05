@@ -10,7 +10,7 @@
 #define N 6000  /* Matrix size */
 int numThreads; //number of threads
 int numBlocks; //number of blocks
-
+int MAXN = 9000; //define a max value for N
 /* Matrices */
 volatile float A[N][N], B[N][N];
 
@@ -85,48 +85,42 @@ void print_inputs() {
     for (col = 0; col < N; col++) {
       printf("%5.2f%s", B[col], (col < N-1) ? "; " : "]\n");
     }
-  }
 }
-
+}
 //using reduction algorithm to calculate first two steps
 
-__global__ void matrixNorm(){
+__global__ void matrixNorm(float *f_A, float *f_B, int n){
+     float mu, sigma;
 //declare the dimensions x-axis and y-axis (row and col)
      int row  = blockDim.y * blockIdx.y + threadIdx.y;  
      int col = blockDim.x * blockIdx.x + threadIdx.x;
+     int index = col + row * n;
 //we want to check to make sure we don't have an excess number of threads
      if(row<N && col<N){
-	
+        for(col = 0; col < N; col++){
+	   mu = 0.0;
+	   for(row = 0; row < N; row++)	
+               mu+= f_A[index];
+           mu /= (float) N;
+           //you cannot calculate sigma without the mean, so we need some synchronization heree
+           //to make sure threads have calculated the mean before getting to this step
+           cudaThreadSynchronize();
+           sigma = 0.0;
+           for(row = 0; row < N; row++){
+	      sigma += powf(f_A[index] - mu, 2.0);
+	   sigma /= (float) N;
+           sigma = sqrt(sigma);
+           //again, we need to make sure that sigma has been calculated in order to result the normalized matrix
+	   cudaThreadSynchronize();
+           for (row = 0; row < N; row++){
+               if(sigma == 0.0)
+	       else
+		        f_B[index] = (f_A[index] - mu) / sigma;
+		}
+	}
+}
 }
 
-
-/* Kernel function */
-
-void matrixNorm() {
-    int row, col;
-    float mu, sigma; // Mean and Standard Deviation
-    
-    printf("Computing Serially.\n");
-    
-    for (col=0; col < N; col++) {
-        mu = 0.0;
-        for (row=0; row < N; row++)
-            mu += A[row][col];
-        mu /= (float) N;
-        sigma = 0.0;
-        for (row=0; row < N; row++)
-            sigma += powf(A[row][col] - mu, 2.0);
-        sigma /= (float) N;
-        sigma = sqrt(sigma);
-        for (row=0; row < N; row++) {
-            if (sigma == 0.0)
-                B[row][col] = 0.0;
-            else
-                B[row][col] = (A[row][col] - mu) / sigma;
-        }
-    }
-    
-}
 
 int main(int argc, char **argv) {
     /* Timing variables */
@@ -150,17 +144,25 @@ int main(int argc, char **argv) {
     //first, declare size of the matrix
     size_t sizeOfMatrix = N * N * sizeof(float);
     //create pointer to matrix
-    float *A;
-    //cuda malloc the matrix (make room for it in memory)
-    cMalloc = 
+    float (*f_A)[N], (*f_B)[N];
+    //cuda malloc the matrix (make room for it in memory
+    cMallocA = cudaMalloc((void**)&f_A, sizeOfMatrix);
+    cMallocB = cudaMalloc((void**)&f_B, sizeOfMatric);
+    //copy data from host to device
+    cudaMemcpy(f_A, A, sizeOfMatrix, cudaMemcpyHostToDevice);
+    cudaMemcpy(f_B, B, sizeOfMatrix, cudaMemcpyHostToDevice);
     //use cuda checks to make sure the allocation was successful
     
     
 
     
     /* Matrix Normalization */
-    matrixNorm <<<numBlocks, numThreads>>>(;
-   
+    matrixNorm<<<numBlocks, numThreads>>>(f_A, f_B, N);
+    
+    
+    /* Free Cuda */
+    cudaFree(f_A);
+    cudaFree(f_B);
     
     /* Stop Clock */
     gettimeofday(&stop, &tzdummy);
