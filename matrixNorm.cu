@@ -11,9 +11,10 @@
 int numThreads; //number of threads
 int numBlocks; //number of blocks
 int MAXN = 9000; //define a max value for N
+
 /* Matrices */
 volatile float A[N][N], B[N][N];
-
+size_t sizeOfMatrix;
 /* returns a seed for srand based on the time */
 unsigned int time_seed() {
   struct timeval t;
@@ -114,51 +115,65 @@ __global__ void matrixNorm(float *f_A, float *f_B, int n){
 	   cudaThreadSynchronize();
            for (row = 0; row < N; row++){
                if(sigma == 0.0)
+			f_B[index] = 0.0;
 	       else
 		        f_B[index] = (f_A[index] - mu) / sigma;
 		}
 	}
 }
 }
-
+}
 
 int main(int argc, char **argv) {
     /* Timing variables */
-    struct timeval start, stop;  /* Elapsed times using gettimeofday() */
+    struct timeval etstart, etstop;  /* Elapsed times using gettimeofday() */
     struct timezone tzdummy;
     unsigned long long runtime;
-    
+    unsigned long long usecstart, usecstop;
+    struct tms cputstart, cputstop;
+ 
+    /* Process program parameters */
+    parameters(argc, argv);
+
     /* Initialize A and B */
     initialize_inputs();
     
+    /* Print input matrices */
+    print_inputs();
     
     /* Start Clock */
     printf("\n---------------------------------------------\n");
     printf("Matrix size N = %d", N);
     printf("\nStarting clock.\n\n");
-    gettimeofday(&start, &tzdummy);
+    gettimeofday(&etstart, &tzdummy);
+    times(&cpustart);
     
     /* declare arrays */
     
     /* Allocate memory of the matrix in device and copy the matrix from host to device to do work */
     //first, declare size of the matrix
-    size_t sizeOfMatrix = N * N * sizeof(float);
+    sizeOfMatrix = N * N * sizeof(float);
     //create pointer to matrix
-    float (*f_A)[N], (*f_B)[N];
+    float *f_A, *f_B;
     //cuda malloc the matrix (make room for it in memory
     cMallocA = cudaMalloc((void**)&f_A, sizeOfMatrix);
-    cMallocB = cudaMalloc((void**)&f_B, sizeOfMatric);
+    cMallocB = cudaMalloc((void**)&f_B, sizeOfMatrix);
+    
+    //initialize start and stop
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
     //copy data from host to device
     cudaMemcpy(f_A, A, sizeOfMatrix, cudaMemcpyHostToDevice);
     cudaMemcpy(f_B, B, sizeOfMatrix, cudaMemcpyHostToDevice);
     //use cuda checks to make sure the allocation was successful
-    
+    cudaEventRecord(start);
     
 
     
     /* Matrix Normalization */
     matrixNorm<<<numBlocks, numThreads>>>(f_A, f_B, N);
-    
+    cudaEventRecord(stop);
     
     /* Free Cuda */
     cudaFree(f_A);
@@ -168,11 +183,36 @@ int main(int argc, char **argv) {
     gettimeofday(&stop, &tzdummy);
     runtime = (unsigned long long)(stop.tv_sec - start.tv_sec) * 1000000 + (stop.tv_usec - start.tv_usec);
     
-    
+    /* Stop Clock CPU Times */
+    gettimeofday(&etstop, &tzdummy);
+  times(&cputstop);
+  printf("Stopped clock.\n");
+  usecstart = (unsigned long long)etstart.tv_sec * 1000000 + etstart.tv_usec;
+  usecstop = (unsigned long long)etstop.tv_sec * 1000000 + etstop.tv_usec;  
+ 
     /* Display timing results */
     printf("Runtime = %g ms.\n", (float)runtime/(float)1000);
     printf("\nStopped clock.");
     printf("\n---------------------------------------------\n");
     
+    /* Display other timing results */
+  printf("\nElapsed time = %g ms.\n",
+	 (float)(usecstop - usecstart)/(float)1000);
+
+  printf("(CPU times are accurate to the nearest %g ms)\n",
+	 1.0/(float)CLOCKS_PER_SEC * 1000.0);
+  printf("My total CPU time for parent = %g ms.\n",
+	 (float)( (cputstop.tms_utime + cputstop.tms_stime) -
+		  (cputstart.tms_utime + cputstart.tms_stime) ) /
+	 (float)CLOCKS_PER_SEC * 1000);
+  printf("My system CPU time for parent = %g ms.\n",
+	 (float)(cputstop.tms_stime - cputstart.tms_stime) /
+	 (float)CLOCKS_PER_SEC * 1000);
+  printf("My total CPU time for child processes = %g ms.\n",
+	 (float)( (cputstop.tms_cutime + cputstop.tms_cstime) -
+		  (cputstart.tms_cutime + cputstart.tms_cstime) ) /
+	 (float)CLOCKS_PER_SEC * 1000);
+      /* Contrary to the man pages, this appears not to include the parent */
+  printf("--------------------------------------------\n");
     exit(0);
 }
