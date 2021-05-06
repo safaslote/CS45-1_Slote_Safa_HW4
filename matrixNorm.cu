@@ -176,10 +176,10 @@ int main(int argc, char **argv) {
     //use cuda checks to make sure the allocation was successful
     cudaEventRecord(start);
     
-
     
     /* Matrix Normalization */
     matrixNorm<<<numBlocks, numThreads>>>(f_A, f_B, N);
+    cudaMemcpy(&ptrB, f_B, sizeOfMatrix, cudaMemcpyDeviceToHost);
     cudaError_t err = cudaGetLastError();
     
     if(err != cudaSuccess){
