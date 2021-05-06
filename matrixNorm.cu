@@ -10,7 +10,7 @@
 #define MAXN 6000  /* Matrix size */
 int numThreads; //number of threads
 int numBlocks; //number of blocks
-int N; //define a max value for N
+int N; //Matrix Size
 int row, col;
 /* Matrices */
 float A[MAXN*MAXN], B[MAXN*MAXN];
@@ -45,10 +45,10 @@ void parameters(int argc, char **argv) {
 	} 
 	if (argc >= 2) {
 		N = atoi(argv[1]);
-		if (N < 1 || N > MAXN) {
-			printf("N = %i is out of range.\n", N);
-			exit(0);
-		}
+	//	if (N < 1 || N > MAXN) {
+	//		printf("N = %i is out of range.\n", N);
+	//		exit(0);
+	//	}
 	}
 	else {
 		printf("Usage: %s <matrix_dimension> [random seed]\n",
@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     //copy data from host to device
-    cudaMemcpy(f_A, &ptrA, sizeof(float)*N*N, cudaMemcpyHostToDevice);
+    cudaMemcpy(f_A, &ptrA, sizeOfMatrix, cudaMemcpyHostToDevice);
     //*m_A = &A[N][N];
     cudaMemcpy(f_B, &ptrB, sizeOfMatrix, cudaMemcpyHostToDevice);
     //use cuda checks to make sure the allocation was successful
