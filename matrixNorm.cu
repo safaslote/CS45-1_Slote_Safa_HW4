@@ -51,7 +51,7 @@ void parameters(int argc, char **argv) {
 	//	}
 	}
 	else {
-		printf("Usage: %s <matrix_dimension> [random seed]\n",
+		printf("Usage: %s <matrix_dimension> [random seed] [number of threads] [number of blocks]\n",
 				argv[0]);    
 		exit(0);
 	}
@@ -96,34 +96,34 @@ void print_inputs() {
 }
 //using reduction algorithm to calculate first two steps
 
-__global__ void matrixNorm(float *f_A, float *f_B, int n){
+__global__ void matrixNorm(float *f_A, float *f_B, int matSize){
      float mu, sigma;
 //declare the dimensions x-axis and y-axis (row and col)
      int row  = blockDim.y * blockIdx.y + threadIdx.y;  
      int col = blockDim.x * blockIdx.x + threadIdx.x;
 //     int index = col + row * n;
 //we want to check to make sure we don't have an excess number of threads
-     if(row<n && col<n){
-        for(col = 0; col < n; col++){
+     if(row<matSize && col<matSize){
+        for(col = 0; col < matSize; col++){
 	   mu = 0.0;
-	   for(row = 0; row < n; row++)	
-               mu+= f_A[col * n + row];
-           mu /= (float) n;
+	   for(row = 0; row < matSize; row++)	
+               mu+= f_A[matSize * col + row];
+           mu /= (float) matSize;
            //you cannot calculate sigma without the mean, so we need some synchronization heree
            //to make sure threads have calculated the mean before getting to this step
            __syncthreads();
            sigma = 0.0;
-           for(row = 0; row < n; row++){
-	      sigma += powf(f_A[col*n+row] - mu, 2.0);
-	   sigma /= (float) n;
+           for(row = 0; row < matSize; row++){
+	      sigma += powf(f_A[matSize*col+row] - mu, 2.0);
+	   sigma /= (float) matSize;
            sigma = sqrt(sigma);
            //again, we need to make sure that sigma has been calculated in order to result the normalized matrix
 	   __syncthreads();
-           for (row = 0; row < n; row++){
+           for (row = 0; row < matSize; row++){
                if(sigma == 0.0)
-			f_B[row*n+col] = 0.0;
+			f_B[matSize*col+row] = 0.0;
 	       else
-		        f_B[row*n+col] = (f_A[col*n+row] - mu) / sigma;
+		        f_B[matSize*col+row] = (f_A[matSize*col+row] - mu) / sigma;
 		}
 	}
 }
