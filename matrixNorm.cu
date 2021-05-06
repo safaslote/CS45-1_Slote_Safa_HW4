@@ -7,15 +7,17 @@
 #include <sys/time.h>
 #include <time.h>
 
-#define N 6000  /* Matrix size */
+#define MAXN 6000  /* Matrix size */
 int numThreads; //number of threads
 int numBlocks; //number of blocks
-int MAXN = 9000; //define a max value for N
+int N; //define a max value for N
 int row, col;
-int index = row * col + N;
 /* Matrices */
-float* A[N][N], B[N][N];
-size_t sizeOfMatrix;
+float A[MAXN*MAXN], B[MAXN*MAXN];
+//int *ptrA;
+float *ptrA = A;
+float *ptrB = B;
+size_t sizeOfMatrix = sizeof(float) * N *N;
 /* returns a seed for srand based on the time */
 unsigned int time_seed() {
   struct timeval t;
@@ -56,6 +58,8 @@ void parameters(int argc, char **argv) {
 
 	/* Print parameters */
 	printf("\nMatrix dimension N = %i.\n", N);
+	printf("\nNumber of blocks = %i.\n", numBlocks);
+        printf("\nNumber of threads = %i.\n", numThreads);
 }
 
 /* Initialize A and B*/
@@ -65,8 +69,8 @@ void initialize_inputs() {
     srand((unsigned)time(NULL));
     for (row = 0; row < N; row++) {
         for (col = 0; col < N; col++) {
-            A[index] = (float)rand() / 32768.0;
-            B[index] = 0.0;
+           A[col*N+row] = (float)rand() / 32768.0;
+           B[col*N+row] = 0.0;
         }
     }
     
@@ -80,7 +84,7 @@ void print_inputs() {
     printf("\nA =\n\t");
     for (row = 0; row < N; row++) {
       for (col = 0; col < N; col++) {
-	printf("%5.2f%s", A[row][col], (col < N-1) ? ", " : ";\n\t");
+	printf("%5.2f%s", A[col*N+row], (col < N-1) ? ", " : ";\n\t");
       }
     
     printf("\nB = [");
@@ -97,29 +101,29 @@ __global__ void matrixNorm(float *f_A, float *f_B, int n){
 //declare the dimensions x-axis and y-axis (row and col)
      int row  = blockDim.y * blockIdx.y + threadIdx.y;  
      int col = blockDim.x * blockIdx.x + threadIdx.x;
-     int index = col + row * n;
+//     int index = col + row * n;
 //we want to check to make sure we don't have an excess number of threads
-     if(row<N && col<N){
-        for(col = 0; col < N; col++){
+     if(row<n && col<n){
+        for(col = 0; col < n; col++){
 	   mu = 0.0;
-	   for(row = 0; row < N; row++)	
-               mu+= f_A[index];
-           mu /= (float) N;
+	   for(row = 0; row < n; row++)	
+               mu+= f_A[col * n + row];
+           mu /= (float) n;
            //you cannot calculate sigma without the mean, so we need some synchronization heree
            //to make sure threads have calculated the mean before getting to this step
            __syncthreads();
            sigma = 0.0;
-           for(row = 0; row < N; row++){
-	      sigma += powf(f_A[index] - mu, 2.0);
-	   sigma /= (float) N;
+           for(row = 0; row < n; row++){
+	      sigma += powf(f_A[col*n+row] - mu, 2.0);
+	   sigma /= (float) n;
            sigma = sqrt(sigma);
            //again, we need to make sure that sigma has been calculated in order to result the normalized matrix
 	   __syncthreads();
-           for (row = 0; row < N; row++){
+           for (row = 0; row < n; row++){
                if(sigma == 0.0)
-			f_B[index] = 0.0;
+			f_B[row*n+col] = 0.0;
 	       else
-		        f_B[index] = (f_A[index] - mu) / sigma;
+		        f_B[row*n+col] = (f_A[col*n+row] - mu) / sigma;
 		}
 	}
 }
@@ -166,8 +170,9 @@ int main(int argc, char **argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     //copy data from host to device
-    cudaMemcpy(f_A, m_A, sizeof(float)*N*N, cudaMemcpyHostToDevice);
-    cudaMemcpy(f_B, B, sizeOfMatrix, cudaMemcpyHostToDevice);
+    cudaMemcpy(f_A, &ptrA, sizeof(float)*N*N, cudaMemcpyHostToDevice);
+    //*m_A = &A[N][N];
+    cudaMemcpy(f_B, &ptrB, sizeOfMatrix, cudaMemcpyHostToDevice);
     //use cuda checks to make sure the allocation was successful
     cudaEventRecord(start);
     
@@ -188,7 +193,7 @@ int main(int argc, char **argv) {
     cudaFree(f_B);
     
     /* Stop Clock */
-    gettimeofday(&stop, &tzdummy);
+    //gettimeofday(&stop, &tzdummy);
    // runtime = (unsigned long long)(stop.tv_sec - start.tv_sec) * 1000000 + (stop.tv_usec - start.tv_usec);
     
     /* Stop Clock CPU Times */
@@ -199,7 +204,7 @@ int main(int argc, char **argv) {
   usecstop = (unsigned long long)etstop.tv_sec * 1000000 + etstop.tv_usec;  
  
     /* Display timing results */
-    printf("Runtime = %g ms.\n", (float)runtime/(float)1000);
+    //printf("Runtime = %g ms.\n", (float)runtime/(float)1000);
     printf("\nStopped clock.");
     printf("\n---------------------------------------------\n");
     
